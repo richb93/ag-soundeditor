@@ -1,7 +1,9 @@
 """AG SoundEditor main window (DLOG 768) and application logic."""
 import json
 import os
+import queue
 import sys
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -58,6 +60,8 @@ class App:
         self.keyboard = None
         self.kbd_state = dict(velocity=64, reverb=0, chorus=0, surround=0)
         self._send_job = None
+        self._last_send = 0.0
+        self._receiving = False
         self.mod = 'Command' if sys.platform == 'darwin' else 'Control'
 
         self.build_menu()
@@ -311,31 +315,47 @@ class App:
         self.dirty = True
         self.update_title()
         self.refresh()
-        self.schedule_send()
+        if not self._receiving:
+            self.schedule_send()
+
+    # A dump is 139 bytes, about 45 ms on a 31.25 kbaud MIDI cable, so sends are
+    # limited to one per SEND_INTERVAL; the last change is always sent.
+    SEND_INTERVAL = 0.1
 
     def schedule_send(self):
         if self._send_job is None:
-            self._send_job = self.root.after(25, self.send_now)
+            wait = self._last_send + self.SEND_INTERVAL - time.monotonic()
+            self._send_job = self.root.after(max(1, int(wait * 1000)), self.send_now)
 
     def send_now(self):
-        self._send_job = None
+        if self._send_job is not None:
+            self.root.after_cancel(self._send_job)
+            self._send_job = None
+        self._last_send = time.monotonic()
         try:
             self.midi.send_program(self.prog)
         except Exception as e:
             self.status.config(text=f'MIDI error: {e}')
 
     def poll_midi(self):
-        try:
-            while True:
+        while True:
+            try:
                 msg = self.midi.incoming.get_nowait()
-                if msg.type == 'sysex':
-                    data = P.Program.parse_sysex(msg.data)
-                    if data:
-                        self.push_undo()
-                        self.prog.load(data)
-                        self.status.config(text='Program received from MIDI In')
-        except Exception:
-            pass
+            except queue.Empty:
+                break
+            if msg.type != 'sysex':
+                continue
+            data = P.Program.parse_sysex(msg.data)
+            # ignore our own dump echoed back (e.g. In and Out on the same bus)
+            if data and data != self.prog.snapshot():
+                self.push_undo()
+                # the device already holds this program: load it without sending it back
+                self._receiving = True
+                try:
+                    self.prog.load(data)
+                finally:
+                    self._receiving = False
+                self.status.config(text='Program received from MIDI In')
         self.root.after(50, self.poll_midi)
 
     def open_panel(self, key, osc, n):
