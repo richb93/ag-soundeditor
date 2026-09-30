@@ -459,3 +459,44 @@ class MidiSetupDialog(DialogWindow):
             return
         app.midi_settings_changed()
         self.close()
+
+
+class SettingsDialog:
+    """Settings window (macOS app menu > Settings...): GUI scale."""
+
+    def __init__(self, app):
+        from .app import SCALE_CHOICES
+        self.app = app
+        S = app.scale
+        self.top = tk.Toplevel(app.root)
+        self.top.title('Settings')
+        self.top.resizable(False, False)
+        self.top.transient(app.root)
+        w, h = 220, 150
+        s = self.surface = W.Surface(self.top, w, h, S)
+        s.pack()
+        s.text(14, 12, 'Window scale:', 'hdr')
+        self.choice = app.scale_choice or 0
+        self.radios = []
+        for i, (value, label) in enumerate(SCALE_CHOICES):
+            if value == 0:
+                label = f'{label} ({app.auto_scale()}x)'
+            y = 34 + i * 20
+            r = s.add(W.Radio([y, 24, y + 18, 200], label, lambda v=value: self.select(v)))
+            self.radios.append((r, value))
+        self.select(self.choice)
+        s.add(W.Button([118, 20, 138, 90], 'Cancel', self.top.destroy))
+        s.add(W.Button([118, 130, 138, 200], 'OK', self.ok))
+        self.top.bind('<Return>', lambda e: self.ok())
+        self.top.bind('<Escape>', lambda e: self.top.destroy())
+        rx, ry = app.root.winfo_rootx(), app.root.winfo_rooty()
+        self.top.geometry(f'+{rx + 60 * S}+{ry + 40 * S}')
+
+    def select(self, value):
+        self.choice = value
+        for r, v in self.radios:
+            r.set(v == value)
+
+    def ok(self):
+        self.top.destroy()
+        self.app.set_scale(self.choice or None)

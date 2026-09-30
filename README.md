@@ -11,8 +11,13 @@ pip install -r requirements.txt      # mido + python-rtmidi (optional: runs with
 python run.py [patch.mid] [--scale 1|2|3|4]
 ```
 
-Python 3.8+ with Tk 8.6 or newer. `--scale` sets the pixel zoom of the original 512×342-era
-artwork (the default is 2 on screens at least 900 px tall).
+Python 3.8+ with Tk 8.6 or newer.
+
+The window is drawn at a whole-number zoom of the original artwork so it stays crisp. Choose
+it under **Settings › Scale** (Windows/Linux) or **AG SoundEditor › Settings…** (macOS, Cmd+,):
+*Automatic*, *1x*, *2x* or *3x*. The window rebuilds immediately and the choice is saved.
+Automatic uses 1x below 900 px of screen height, 3x from 2000 px, and 2x in between.
+`--scale N` overrides the saved choice for one run.
 
 * Click a panel in the main window to open its editor (OSC Basic, Pitch EG, VDF MG, Color,
   Modulation, After Touch, VDF 1/2, VDA 1/2, Pitch MG 1/2). The OSC2 panels are greyed out

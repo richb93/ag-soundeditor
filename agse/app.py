@@ -16,6 +16,7 @@ from .midi_io import Midi
 
 SETTINGS = os.path.join(os.path.expanduser('~'), '.agse_settings.json')
 
+SCALE_CHOICES = [(0, 'Automatic'), (1, '1x'), (2, '2x'), (3, '3x')]
 MODES = ['Single', 'Double', 'Drums', '---']
 OCTAVES = {-2: "32'", -1: "16'", 0: "8'", 1: "4'"}
 OSC_SELECT = ['Off', 'OSC1', 'OSC2', 'Both']
@@ -41,14 +42,27 @@ class MiniTri(W.Widget):
             s.fill(l + 2, t + 4, l + 7, t + 5, W.BLACK, self.tag)
 
 
+def enable_windows_dpi_awareness():
+    """Stop Windows bitmap-stretching (blurring) the window on high-DPI displays;
+    the app does its own crisp integer scaling instead."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
+
+
 class App:
     def __init__(self, scale=None, path=None):
+        enable_windows_dpi_awareness()
+        W.reset_caches()   # images/fonts belong to one Tk interpreter
         self.root = tk.Tk()
         self.root.withdraw()
         self.settings = self.load_settings()
-        if scale is None:
-            scale = self.settings.get('scale') or (2 if self.root.winfo_screenheight() >= 900 else 1)
-        self.scale = scale
+        # --scale on the command line overrides the saved Settings choice for this run
+        self.scale_choice = scale if scale else self.settings.get('scale')  # None = automatic
+        self.scale = self.scale_choice or self.auto_scale()
         self.prog = P.Program()
         self.prog.device = self.settings.get('device', 'AG-10')
         self.midi = Midi()
@@ -120,6 +134,8 @@ class App:
             root.createcommand('tk::mac::Quit', self.quit)
             # Finder "Open With" / drag onto the Dock icon
             root.createcommand('::tk::mac::OpenDocument', self.open_documents)
+            # defining this adds the standard Settings... (Cmd+,) item to the app menu
+            root.createcommand('::tk::mac::ShowPreferences', self.settings_dialog)
         f = tk.Menu(mb, tearoff=0)
         add(f, 'New', self.new, 'N')
         add(f, 'Open...', self.open, 'O')
@@ -150,6 +166,14 @@ class App:
         m.add_command(label='Keyboard...', command=self.show_keyboard)
         mb.add_cascade(label='MIDI', menu=m)
         if sys.platform != 'darwin':
+            st = tk.Menu(mb, tearoff=0)
+            scale_menu = tk.Menu(st, tearoff=0)
+            self.scale_var = tk.IntVar(value=self.scale_choice or 0)
+            for value, label in SCALE_CHOICES:
+                scale_menu.add_radiobutton(label=label, value=value, variable=self.scale_var,
+                                           command=lambda: self.set_scale(self.scale_var.get() or None))
+            st.add_cascade(label='Scale', menu=scale_menu)
+            mb.add_cascade(label='Settings', menu=st)
             h = tk.Menu(mb, tearoff=0)
             h.add_command(label=d[1]['items'][0][0], command=self.about)
             mb.add_cascade(label='Help', menu=h)
@@ -160,6 +184,39 @@ class App:
                        for n in (32, 16)]
         if sys.platform != 'darwin':   # on macOS the .app bundle icon is used
             self.root.iconphoto(True, *self._icons)
+
+    # ------------------------------------------------------------- scaling
+    def auto_scale(self):
+        h = self.root.winfo_screenheight()
+        return 3 if h >= 2000 else 2 if h >= 900 else 1
+
+    def settings_dialog(self):
+        dialogs.SettingsDialog(self)
+
+    def set_scale(self, choice):
+        """choice: None for automatic, or 1/2/3.  Rebuilds the windows at the new zoom."""
+        self.scale_choice = choice
+        self.settings['scale'] = choice
+        self.save_settings()
+        if hasattr(self, 'scale_var'):
+            self.scale_var.set(choice or 0)
+        scale = choice or self.auto_scale()
+        if scale == self.scale:
+            return
+        reopen_keyboard = self.keyboard is not None
+        open_panels = list(self.dialogs)
+        self.close_dialogs()
+        if self.keyboard:
+            self.keyboard.close()
+        self.scale = scale
+        self.surface.destroy()
+        self.status.destroy()
+        self.build_window()
+        self.refresh()
+        for key, osc in open_panels:
+            self.open_panel(key, osc, 0)
+        if reopen_keyboard:
+            self.show_keyboard()
 
     def open_documents(self, *paths):
         if paths and self.confirm_discard('opening another file'):

@@ -18,6 +18,11 @@ SYSTEM_FAMILIES = ('Chicago', 'ChicagoFLF', 'Charcoal', 'Geneva', 'Lucida Grande
 SMALL_FAMILIES = ('Geneva', 'Verdana', 'Tahoma', 'DejaVu Sans', 'Helvetica', 'Arial')
 
 
+def reset_caches():
+    _images.clear()
+    _fonts.clear()
+
+
 def font(kind, scale):
     """kind: 'system' (Chicago 12 stand-in) or 'small' (Geneva 9 stand-in)."""
     key = (kind, scale)

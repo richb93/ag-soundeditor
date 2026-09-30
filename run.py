@@ -9,7 +9,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('file', nargs='?', help='program file to open (.mid / .syx)')
     ap.add_argument('--scale', type=int, choices=(1, 2, 3, 4),
-                    help='pixel zoom for the original 1-bit artwork (default: 2 on large screens)')
+                    help='pixel zoom for this run, overriding the Settings choice')
     args = ap.parse_args()
     App(scale=args.scale, path=args.file).run()
 
